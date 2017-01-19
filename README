@@ -1,5 +1,5 @@
-The original idea is to filter the comments count to be greater than 1000, and 
-keep track of the lowest rating of all books I have crawled, whenever I hit a new 
-book record, I compare the rating of it to the lowest rating, and if it's greater than 
-the lowest rating in my list, I delete the book with lowest rating and add the new book, else
-I continue browsing, at the end of the crawling, I sort the list of books and write the data to excel
+The original idea is to filter the comments count to be greater than 1000, and keep track of the 
+lowest rating of all books I have crawled, whenever I hit a new book record, I compare the rating 
+of it to the lowest rating, and if it's greater than the lowest rating in my list, I delete the 
+book with lowest rating and add the new book, elseI continue browsing, at the end of the crawling, 
+I sort the list of books and write the data to excel.
