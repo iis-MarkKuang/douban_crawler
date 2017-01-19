@@ -1,4 +1,3 @@
-package douban_crawler;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -31,6 +30,7 @@ public class Crawler {
 	private final static String priceInfoQuery = "span.buy-info > a";
 	private final static String lineInfoQuery = "div.pub";
 	private final static String ratingQuery = "span.rating_nums";
+	ArrayList<String> allUrls = new ArrayList<String>();
 	ArrayList<BookRecord> brs = new ArrayList<BookRecord>();
 	ArrayList<String> urlsToBeCrawled = new ArrayList<String>();
 	HashMap<String, Integer> depthMap = new HashMap<String, Integer>();
@@ -39,79 +39,57 @@ public class Crawler {
 	int threadCount = 5;
 	int waitThreadCount = 0;
 	int count = 0;
-	int depth = 2;
+	int maxDepth = 2;
+	int leastRatingIndex = -1;
+	float leastRating = Float.MAX_VALUE;
 	String url = "https://book.douban.com/tag/%E7%BC%96%E7%A8%8B?type=S";
 	public static final Object signal = new Object();
 	
-	private void fillUrls(String url, ArrayList<String> urls) {
+	private static void fillUrls(String url, ArrayList<String> urls, HashMap<String, Integer> depth) {
 		try {
-			Document doc = Jsoup.connect(url).get();
+			Document doc = Jsoup
+				.connect(url)
+				.userAgent("Mozilla")
+				.cookie("gr_user_id", "081a1753-9fd5-4ee5-b705-a207fdbd9a46")
+				.timeout(5000)
+				.get();
 			Element maxPageEle = doc.select("div.paginator > a").last();
 			int maxPage = Integer.parseInt(maxPageEle.text());
+			System.out.println(maxPage);
 			for(int i = 0; i <= maxPage; i++) {
 				urls.add(url + "&start=" + i * 20);
+				depth.put(url + "&start=" + i * 20, 1);
 			}
-		} catch (Exception e) {
+		} catch (IOException e) {
 			e.printStackTrace();
 		}
+		
 	}
 	
+	@SuppressWarnings("unchecked")
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
 		try {
 			Crawler crawler = new Crawler();
-			Document doc = Jsoup.connect(crawler.url).get();
+			System.setProperty("https.proxyHost", "192.168.2.101");
+			System.setProperty("https.proxyPort", "1080");
+
+			fillUrls(crawler.url, crawler.urlsToBeCrawled, crawler.depthMap);
+			crawler.addUrl(crawler.url, 1);
+			long start = System.currentTimeMillis();
+			System.out.println("Crawling started");
+			crawler.begin();
 			
-//			System.out.println(doc.select("div.navigator > a").size());
-			Element maxPageEle = doc.select("div.paginator > a").last();
-			int maxPage = Integer.parseInt(maxPageEle.text());
-			int leastRatingIndex = 0;
-			float leastRating = Float.MAX_VALUE;
-//			Document doc = Jsoup.parse(new File("C://test.htm"), "UTF8");
-			while (crawler.page <= maxPage) {
-				String urlCurrent = crawler.url + "&start=" + crawler.page * 20;
-				doc = Jsoup.connect(urlCurrent).get();
-				for (Element e : doc.getElementsByClass("subject-item")) {
-					if (crawler.booksCount >= 40) {
-						break;
-					}
-					String commentsText = e.select(commentsCountQuery).text();
-					if(getCommentsCount(commentsText) < 1000) {
-						continue;
-					}
-					crawler.booksCount++;
-					BookRecord br = new BookRecord();
-					br.setCommentsCount(getCommentsCount(commentsText));
-					br.setPriceInfo(e.select(priceInfoQuery).text());
-					String lineInfo = (e.select(lineInfoQuery).text());
-					parseLineInfo(br, lineInfo);
-					br.setRating(Float.parseFloat(e.select(ratingQuery).text()));
-					br.setSerial(crawler.booksCount);
-					br.setTitle(e.select(titleQuery).attr("title"));
-					br.test();
-					if (crawler.brs.size() < 40) {
-						crawler.brs.add(br);
-						for (int i = 0; i < crawler.brs.size(); i++) {
-							if (crawler.brs.get(i).getRating() < leastRating) {
-								leastRatingIndex = i;
-								leastRating = crawler.brs.get(i).getRating();
-							}
-						}
-					} else{
-						if (leastRating >= br.getRating()) {
-							continue;
-						} else {
-							crawler.brs.remove(leastRatingIndex);
-							crawler.brs.add(br);
-						}
-					}
+			while (true) {
+				if (crawler.urlsToBeCrawled.isEmpty() && Thread.activeCount() == 1 || crawler.count == crawler.threadCount) {
+					Collections.sort(crawler.brs, new SortByRating());
+					writeExcel("C://test1.xls", crawler.brs);
+
+					long end = System.currentTimeMillis();
+					System.out.println("Total crawl time" + (end - start) / 1000 + " seconds");
+					System.exit(1);
 				}
-				crawler.page++;
-				System.out.println(crawler.page);
 			}
-			Collections.sort(crawler.brs, new SortByRating());
-			
-			writeExcel("C://test1.xls", crawler.brs);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -122,15 +100,14 @@ public class Crawler {
 			new Thread(new Runnable(){
 				public void run() {
 					while (true) {   
-//                      System.out.println("µ±Ç°½øÈë"+Thread.currentThread().getName());  
+						System.out.println("Entering " + Thread.currentThread().getName());  
                         String tmp = getOneUrl();  
                         if(tmp!=null){  
                             crawl(tmp);  
                         }else{  
-                            synchronized(signal) {  //------------------£¨2£©  
+                            synchronized(signal) {
                                 try {  
                                     count++;  
-                                    System.out.println(count + " threads waiting");  
                                     signal.wait();  
                                 } catch (InterruptedException e) {  
                                     // TODO Auto-generated catch block  
@@ -152,17 +129,76 @@ public class Crawler {
 		}
 		String url = urlsToBeCrawled.get(0);
 		urlsToBeCrawled.remove(0);
+		
 		return url;
 	}
 	
-	private synchronized void addUrl(String url) {
+	private synchronized void addUrl(String url, int depth) {
 		urlsToBeCrawled.add(url);
-		
+		allUrls.add(url);
+		depthMap.put(url, depth);
 	}
 	
 	private void crawl(String url) {
-		
+		try {
+//			String currentUrl = url + "&start=" + page * 20;
+//			page++;
+			int depth = depthMap.get(url);
+			if (depth > maxDepth) {
+				return;
+			}
+			System.out.println("Current crawling page: " + url + " with depth " + depth);
+			Document doc = Jsoup
+				.connect(url)
+				.userAgent("Mozilla")
+				.cookie("gr_user_id", "081a1753-9fd5-4ee5-b705-a207fdbd9a46")
+				.timeout(5000)
+				.get();
+			for (Element e : doc.getElementsByClass("subject-item")) {
+				String commentsText = e.select(commentsCountQuery).text();
+				int commentsCount = getCommentsCount(commentsText);
+				if (commentsCount < 1000) {
+					continue;
+				}
+				booksCount++;
+				BookRecord br = new BookRecord();
+				br.setCommentsCount(commentsCount);
+				br.setPriceInfo(e.select(priceInfoQuery).text());
+				String lineInfo = (e.select(lineInfoQuery).text());
+				parseLineInfo(br, lineInfo);
+				br.setRating(Float.parseFloat(e.select(ratingQuery).text()));
+				br.setSerial(booksCount);
+				br.setTitle(e.select(titleQuery).attr("title"));
+				if (brs.size() < 40) {
+					brs.add(br);
+					if (br.getRating() < leastRating) {
+						leastRating = br.getRating();
+						leastRatingIndex = 0;
+					} else {
+						leastRatingIndex += 1;
+					}
+				} else {
+					if (leastRating >= br.getRating()) {
+						continue;
+					} else {
+						brs.remove(leastRatingIndex);
+						brs.add(br);
+						leastRating = Float.MAX_VALUE;
+						leastRatingIndex = -1;
+						for (int i = 0; i < brs.size(); i++) {
+							if (brs.get(i).getRating() < leastRating) {
+								leastRating = brs.get(i).getRating();
+								leastRatingIndex = i;
+							}
+						}
+					}
+				}
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
+	
 	private static int getCommentsCount(String commentsText) {
 		String pattern = "\\d+";
 		Pattern r = Pattern.compile(pattern);
@@ -201,41 +237,37 @@ public class Crawler {
 		format.setAlignment(jxl.format.Alignment.CENTRE);
 		format.setVerticalAlignment(jxl.format.VerticalAlignment.CENTRE);
 		
-		Label title = new Label(0, 0, "±êÌâ");
-		Label authorEnu = new Label(1, 0, "Ó¢ÎÄ×÷Õß");
-		Label authorChn = new Label(2, 0, "ÖÐÎÄ×÷Õß/ÒëÕß");
-		Label publisher = new Label(3, 0, "³ö°æÉç");
-		Label copiedYM = new Label(4, 0, "Ó¡Ë¢ÄêÔÂ");
-		Label price = new Label(5, 0, "¼Û¸ñ");
-		Label rating = new Label(6, 0, "ÆÀ·Ö");
-		Label commentCount = new Label(7, 0, "ÆÀÂÛÊý");
+		Label rank = new Label(0, 0, "åºå·");
+		Label title = new Label(1, 0, "ä¹¦å");
+		Label rating = new Label(2, 0, "è¯„åˆ†");
+		Label author = new Label(3, 0, "ä½œè€…");
+		Label publisher = new Label(4, 0, "å‡ºç‰ˆç¤¾");
+		Label copiedYM = new Label(5, 0, "å‡ºç‰ˆå¹´æœˆ");
+		Label price = new Label(6, 0, "ä»·æ ¼");
+		sheet.addCell(rank);
 		sheet.addCell(title);
-		sheet.addCell(authorEnu);
-		sheet.addCell(authorChn);
+		sheet.addCell(rating);
+		sheet.addCell(author);
 		sheet.addCell(publisher);
 		sheet.addCell(copiedYM);
 		sheet.addCell(price);
-		sheet.addCell(rating);
-		sheet.addCell(commentCount);
 		
 		int rowNum = 1;
-		for(BookRecord br : brs) {
-			Label brTitle = new Label(0, rowNum, br.getTitle());
-			Label brAuthorEnu = new Label(1, rowNum, br.getAuthorEnu());
-			Label brAuthorChn = new Label(2, rowNum, br.getAuthorChn());
-			Label brPublisher = new Label(3, rowNum, br.getPublisher());
-			Label brCopiedYM = new Label(4, rowNum, br.getCopiedYM());
-			Label brPrice = new Label(5, rowNum, br.getPrice());
-			Label brRating = new Label(6, rowNum, br.getRating() + "");
-			Label brCommentsCount = new Label(7, rowNum, br.getCommentsCount() + "");
+		for(int i = brs.size() - 1; i >= 0; i--) {
+			Label brSerial = new Label(0, rowNum, rowNum + "");
+			Label brTitle = new Label(1, rowNum, brs.get(i).getTitle());
+			Label brRating = new Label(2, rowNum, brs.get(i).getRating() + "");
+			Label brAuthor = new Label(3, rowNum, brs.get(i).getAuthorEnu() + brs.get(i).getAuthorChn());
+			Label brPublisher = new Label(4, rowNum, brs.get(i).getPublisher());
+			Label brCopiedYM = new Label(5, rowNum, brs.get(i).getCopiedYM());
+			Label brPrice = new Label(6, rowNum, brs.get(i).getPrice());
+			sheet.addCell(brSerial);
 			sheet.addCell(brTitle);
-			sheet.addCell(brAuthorEnu);
-			sheet.addCell(brAuthorChn);
+			sheet.addCell(brRating);
+			sheet.addCell(brAuthor);
 			sheet.addCell(brPublisher);
 			sheet.addCell(brCopiedYM);
 			sheet.addCell(brPrice);
-			sheet.addCell(brRating);
-			sheet.addCell(brCommentsCount);
 			rowNum++;
 		}
 		workbook.write();
