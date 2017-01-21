@@ -1,6 +1,5 @@
 The original idea is to filter the comments count to be greater than 1000, and keep track of the 
 lowest rating of all books I have crawled, whenever I hit a new book record, I compare the rating 
-<<<<<<< HEAD
 of it to the lowest rating, and if it's greater than the lowest rating in my list, I delete the book 
 with lowest rating and add the new book, else, I continue browsing, at the end of the crawling, I sort
 the list of books and write the data to excel.
@@ -9,8 +8,4 @@ I used 2 external libraries, one is jsoup for parsing html of the page, the othe
 data into excel file.
 
 Total run time with 5 threads: 113 seconds
-=======
-of it to the lowest rating, and if it's greater than the lowest rating in my list, I delete the 
-book with lowest rating and add the new book, elseI continue browsing, at the end of the crawling, 
-I sort the list of books and write the data to excel.
->>>>>>> 47b0f98d9d3619936881d7293fb5c11b5cd21215
+
